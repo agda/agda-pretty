@@ -1,8 +1,10 @@
 
 module Text.PrettyPrint.Annotated where
 
+open import Level
 open import Agda.Builtin.FromString
 open import Data.Unit
+open import Data.Char as Char
 open import Data.Bool
 open import Data.Maybe
 open import Data.Nat as Nat hiding (_+_; _⊓_; _/_; _≤ᵇ_; _<ᵇ_)
@@ -37,6 +39,8 @@ private
 
 private variable
   ann : Set
+  l : Level
+  A B : Set l
 
 infixl 6 _<>_ _<+>_
 infixl 5 _$$_ _$+$_
@@ -121,7 +125,7 @@ text : String → Doc ann
 text s = sizedText (String.length s) s
 
 instance
-  _ = String.isString
+  IsStringString = String.isString
 
   IsStringDoc : IsString (Doc ann)
   IsStringDoc .IsString.Constraint _ = ⊤
@@ -543,7 +547,7 @@ private
   txtPrinter (Chr c)   s  = String.fromList [ c ] String.++ s
   txtPrinter (Str s1)  s2 = s1 String.++ s2
 
-  module _ {A : Set} (txt : AnnotDetails ann → A → A) (end : A) where
+  module _ (txt : AnnotDetails ann → A → A) (end : A) where
 
     easyDisplay : AnnotDetails ann
                 → (Doc ann → Doc ann → Bool)
@@ -612,15 +616,14 @@ private
         doc' = best lineLen ribbonLen (reduceDoc doc)
 
 
-  fullRender : {A : Set}
-            → Mode                  -- ^ Rendering mode.
-            → ℤ                     -- ^ Line length.
-            → Float                 -- ^ Ribbons per line.
-            → (TextDetails → A → A) -- ^ What to do with text.
-            → A                     -- ^ What to do at the end.
-            → Doc ann               -- ^ The document.
-            → A                     -- ^ Result.
-  fullRender {ann = ann} {A} m l r txt end = fullRenderAnn annTxt end m l r
+  fullRender : Mode                  -- ^ Rendering mode.
+             → ℤ                     -- ^ Line length.
+             → Float                 -- ^ Ribbons per line.
+             → (TextDetails → A → A) -- ^ What to do with text.
+             → A                     -- ^ What to do at the end.
+             → Doc ann               -- ^ The document.
+             → A                     -- ^ Result.
+  fullRender {A = A} {ann = ann} m l r txt end = fullRenderAnn annTxt end m l r
     where
     annTxt : AnnotDetails ann → A → A
     annTxt (NoAnnot s _) = txt s
@@ -723,3 +726,63 @@ renderDecoratedM {ann} {M} {R} startAnn endAnn txt docEnd =
     annPrinter (AnnotEnd a)        (rest , stack)  = (endAnn a >> rest)         , a ∷ stack
     annPrinter (NoAnnot (Chr c) _) (rest , stack)  = (txt (fromChar c) >> rest) , stack
     annPrinter (NoAnnot (Str s) _) (rest , stack)  = (txt s >> rest)            , stack
+
+-- Class
+
+record PrettyLevel : Set where
+  field
+    prettyLevel : ℕ
+
+prettyNormal : PrettyLevel
+prettyNormal = record{ prettyLevel = 0 }
+
+prettyDetailed : ℕ → PrettyLevel
+prettyDetailed n = record{ prettyLevel = n }
+
+record Pretty (ann : Set) (A : Set l) : Set l where
+  field
+    pPrintPrec : PrettyLevel → ℤ → A → Doc ann
+
+  pPrint : A → Doc ann
+  pPrint = pPrintPrec prettyNormal (+ 0)
+
+open Pretty ⦃ ... ⦄ public
+
+private
+  appPrec : ℤ
+  appPrec = + 10
+
+instance
+  PrettyNat : Pretty ann ℕ
+  PrettyNat .pPrintPrec _ _ = nat
+
+  PrettyInt : Pretty ann ℤ
+  PrettyInt .pPrintPrec _ _ = int
+
+  PrettyFloat : Pretty ann Float
+  PrettyFloat .pPrintPrec _ _ = float
+
+  PrettyBool : Pretty ann Bool
+  PrettyBool .pPrintPrec _ _ true  = "true"
+  PrettyBool .pPrintPrec _ _ false = "false"
+
+  PrettyChar : Pretty ann Char
+  PrettyChar .pPrintPrec _ _ = text ∘ Char.show
+
+  PrettyString : Pretty ann String
+  PrettyString .pPrintPrec _ _ = text ∘ String.show
+
+  PrettyMaybe : ⦃ Pretty ann A ⦄ → Pretty ann (Maybe A)
+  PrettyMaybe .pPrintPrec l p nothing  = "nothing"
+  PrettyMaybe .pPrintPrec l p (just x) = maybeParens (appPrec <ᵇ p) ("just" <+> pPrintPrec l (+ 1 + appPrec) x)
+
+  PrettyList : ⦃ Pretty ann A ⦄ → Pretty ann (List A)
+  PrettyList .pPrintPrec l _ = brackets ∘ fsep ∘ punctuate comma ∘ List.map (pPrintPrec l (+ 0))
+
+  PrettyΣ : {B : A → Set l} → ⦃ Pretty ann A ⦄ → ⦃ ∀ {x} → Pretty ann (B x) ⦄ → Pretty ann (Σ A B)
+  PrettyΣ .pPrintPrec l p (x , y) = parens
+                                  $ fsep
+                                  $ punctuate comma
+                                  $ pPrintPrec l (+ 0) x
+                                  ∷ pPrintPrec l (+ 0) y
+                                  ∷ []
