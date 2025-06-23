@@ -547,73 +547,78 @@ private
   txtPrinter (Chr c)   s  = String.fromList [ c ] String.++ s
   txtPrinter (Str s1)  s2 = s1 String.++ s2
 
-  module _ (txt : AnnotDetails ann → A → A) (end : A) where
+  easyDisplay : AnnotDetails ann
+              → (Doc ann → Doc ann → Bool)
+              → (AnnotDetails ann → A → A)
+              → A
+              → Doc ann
+              → A
+  easyDisplay {ann = ann} {A = A} nlSpaceText chooseFirst txt end = lay
+    where
+      lay : Doc ann → A
+      lay NoDoc            = end -- error
+      lay (Union p q)      = if chooseFirst p q then lay p else lay q
+      lay (Nest _ p)       = lay p
+      lay Empty            = end
+      lay (NilAbove p)     = txt nlSpaceText (lay p)
+      lay (TextBeside s p) = txt s (lay p)
+      lay (Above _ _ _)    = end -- error
+      lay (Beside _ _ _)   = end -- error
 
-    easyDisplay : AnnotDetails ann
-                → (Doc ann → Doc ann → Bool)
-                → Doc ann
-                → A
-    easyDisplay nlSpaceText chooseFirst = lay
-      where
-        lay : Doc ann → A
-        lay NoDoc            = end -- error
-        lay (Union p q)      = if chooseFirst p q then lay p else lay q
-        lay (Nest _ p)       = lay p
-        lay Empty            = end
-        lay (NilAbove p)     = txt nlSpaceText (lay p)
-        lay (TextBeside s p) = txt s (lay p)
-        lay (Above _ _ _)    = end -- error
-        lay (Beside _ _ _)   = end -- error
+  display : Mode → ℤ → ℤ
+          → (AnnotDetails ann → A → A)
+          → A
+          → Doc ann → A
+  display {ann = ann} {A = A} m pageWidth ribbonWidth txt end =
+    case pageWidth - ribbonWidth of λ
+      gapWidth → display' gapWidth (gapWidth /ℕ 2)
+    where
+      display' : ℤ → ℤ → Doc ann → A
+      display' gapWidth shift = lay (+ 0)
+        where
+          mutual
+            lay : ℤ → Doc ann → A
+            lay k (Nest k1 p)  = lay (k + k1) p
+            lay _ Empty        = end
+            lay k (NilAbove p) = txt nlText (lay k p)
+            lay k (TextBeside s p) = lay1 k s p
 
-    display : Mode → ℤ → ℤ → Doc ann → A
-    display m pageWidth ribbonWidth =
-      case pageWidth - ribbonWidth of λ
-        gapWidth → display' gapWidth (gapWidth /ℕ 2)
-      where
-        display' : ℤ → ℤ → Doc ann → A
-        display' gapWidth shift = lay (+ 0)
-          where
-            mutual
-              lay : ℤ → Doc ann → A
-              lay k (Nest k1 p)  = lay (k + k1) p
-              lay _ Empty        = end
-              lay k (NilAbove p) = txt nlText (lay k p)
-              lay k (TextBeside s p) = lay1 k s p
+            lay _ (Above _ _ _)  = end -- error
+            lay _ (Beside _ _ _) = end -- error
+            lay _ NoDoc          = end -- error
+            lay _ (Union _ _)    = end -- error
 
-              lay _ (Above _ _ _)  = end -- error
-              lay _ (Beside _ _ _) = end -- error
-              lay _ NoDoc          = end -- error
-              lay _ (Union _ _)    = end -- error
+            lay1 : ℤ → AnnotDetails ann → Doc ann → A
+            lay1 k s p = let r = k + annotSize s
+                        in txt (NoAnnot (Str (indent k)) k) $ txt s $ lay2 r p
 
-              lay1 : ℤ → AnnotDetails ann → Doc ann → A
-              lay1 k s p = let r = k + annotSize s
-                          in txt (NoAnnot (Str (indent k)) k) $ txt s $ lay2 r p
+            lay2 : ℤ → Doc ann → A
+            lay2 k (NilAbove p)     = txt nlText $ lay k p
+            lay2 k (TextBeside s p) = txt s $ lay2 (k + annotSize s) p
+            lay2 k (Nest _ p)       = lay2 k p
+            lay2 _ Empty            = end
+            lay2 _ (Above _ _ _)    = end -- error
+            lay2 _ (Beside _ _ _)   = end -- error
+            lay2 _ NoDoc            = end -- error
+            lay2 _ (Union _ _)      = end -- error
 
-              lay2 : ℤ → Doc ann → A
-              lay2 k (NilAbove p)     = txt nlText $ lay k p
-              lay2 k (TextBeside s p) = txt s $ lay2 (k + annotSize s) p
-              lay2 k (Nest _ p)       = lay2 k p
-              lay2 _ Empty            = end
-              lay2 _ (Above _ _ _)    = end -- error
-              lay2 _ (Beside _ _ _)   = end -- error
-              lay2 _ NoDoc            = end -- error
-              lay2 _ (Union _ _)      = end -- error
-
-    fullRenderAnn : Mode    -- ^ Rendering mode.
-                  → ℤ       -- ^ Line length.
-                  → Float   -- ^ Ribbons per line.
-                  → Doc ann -- ^ The document.
-                  → A       -- ^ Result.
-    fullRenderAnn OneLineMode _ _ doc
-      = easyDisplay spaceText (λ _ _ → false) (reduceDoc doc)
-    fullRenderAnn LeftMode    _ _ doc
-      = easyDisplay nlText (λ p _ → nonEmptySet p) (reduceDoc doc)
-    fullRenderAnn m lineLen ribbons doc
-      = display m lineLen ribbonLen doc'
-      where
-        ribbonLen : ℤ
-        ribbonLen = round! (Float.fromℤ lineLen Float.÷ ribbons)
-        doc' = best lineLen ribbonLen (reduceDoc doc)
+  fullRenderAnn : Mode                       -- ^ Rendering mode
+                → ℤ                          -- ^ Line length
+                → Float                      -- ^ Ribbons per line
+                → (AnnotDetails ann → A → A) -- ^ How to handle text
+                → A                          -- ^ What to do at the end
+                → Doc ann                    -- ^ The document
+                → A                          -- ^ Result
+  fullRenderAnn OneLineMode _ _ txt end doc
+    = easyDisplay spaceText (λ _ _ → false) txt end (reduceDoc doc)
+  fullRenderAnn LeftMode    _ _ txt end doc
+    = easyDisplay nlText (λ p _ → nonEmptySet p) txt end (reduceDoc doc)
+  fullRenderAnn m lineLen ribbons txt end doc
+    = display m lineLen ribbonLen txt end doc'
+    where
+      ribbonLen : ℤ
+      ribbonLen = round! (Float.fromℤ lineLen Float.÷ ribbons)
+      doc' = best lineLen ribbonLen (reduceDoc doc)
 
 
   fullRender : Mode                  -- ^ Rendering mode.
@@ -623,7 +628,7 @@ private
              → A                     -- ^ What to do at the end.
              → Doc ann               -- ^ The document.
              → A                     -- ^ Result.
-  fullRender {A = A} {ann = ann} m l r txt end = fullRenderAnn annTxt end m l r
+  fullRender {A = A} {ann = ann} m l r txt end = fullRenderAnn m l r annTxt end
     where
     annTxt : AnnotDetails ann → A → A
     annTxt (NoAnnot s _) = txt s
@@ -662,8 +667,8 @@ private
   renderSpans : Doc ann → String × List (Span ann)
   renderSpans {ann} =
     finalize
-    ∘ fullRenderAnn spanPrinter emptySpans
-                    (mode style) (+ lineLength style) (ribbonsPerLine style)
+    ∘ fullRenderAnn (mode style) (+ lineLength style) (ribbonsPerLine style)
+                    spanPrinter emptySpans
     where
 
     emptySpans : Spans ann
@@ -700,8 +705,8 @@ renderDecorated : (ann → String) -- ^ Starting an annotation.
                 → (ann → String) -- ^ Ending an annotation.
                 → Doc ann → String
 renderDecorated {ann} startAnn endAnn =
-  proj₁ ∘ fullRenderAnn annPrinter ("" , [])
-                        (mode style) (+ lineLength style) (ribbonsPerLine style)
+  proj₁ ∘ fullRenderAnn (mode style) (+ lineLength style) (ribbonsPerLine style)
+                        annPrinter ("" , [])
   where
     annPrinter : AnnotDetails ann → String × List ann → String × List ann
     annPrinter AnnotStart    (rest , [])     = (rest , []) -- error
@@ -717,8 +722,8 @@ renderDecoratedM : {M : Set → Set} {R : Set}
                  → M R            -- ^ Document end.
                  → Doc ann → M R
 renderDecoratedM {ann} {M} {R} startAnn endAnn txt docEnd =
-  proj₁ ∘ fullRenderAnn annPrinter (docEnd , [])
-                        (mode style) (+ lineLength style) (ribbonsPerLine style)
+  proj₁ ∘ fullRenderAnn (mode style) (+ lineLength style) (ribbonsPerLine style)
+                        annPrinter (docEnd , [])
   where
     annPrinter : AnnotDetails ann → M R × List ann → M R × List ann
     annPrinter AnnotStart          (rest , [])     = rest                       , [] -- error
