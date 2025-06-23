@@ -52,5 +52,11 @@ private
   esc : String → String
   esc = printf "\ESC[%sm"
 
+foreground : Color → Doc ANSICode → Doc ANSICode
+foreground = annotate ∘ fg
+
+background : Color → Doc ANSICode → Doc ANSICode
+background = annotate ∘ bg
+
 renderColor : Doc ANSICode → String
 renderColor = renderDecorated (esc ∘ code) (esc ∘ reset)
