@@ -14,9 +14,9 @@ data Color : Set where
   brightBlack brightRed brightGreen brightYellow brightBlue brightMagenta brightCyan brightWhite : Color
   rgb : ℕ → Color   -- For instance, rgb 0xffff00 for bright yellow
 
-data ANSICode : Set where
-  fg : Color → ANSICode
-  bg : Color → ANSICode
+data ANSIColor : Set where
+  fg : Color → ANSIColor
+  bg : Color → ANSIColor
 
 private
   colorCode : ℕ → Color → String
@@ -42,21 +42,23 @@ private
       basic : ℕ → String
       basic n = printf "%u" (n + offs)
 
-  code : ANSICode → String
+  code : ANSIColor → String
   code (fg x) = colorCode 30  x
   code (bg x) = colorCode 40 x
 
-  reset : ANSICode → String
+  reset : ANSIColor → String
   reset _ = "0"
 
   esc : String → String
   esc = printf "\ESC[%sm"
 
-foreground : Color → Doc ANSICode → Doc ANSICode
+foreground : Color → Doc ANSIColor → Doc ANSIColor
 foreground = annotate ∘ fg
 
-background : Color → Doc ANSICode → Doc ANSICode
+background : Color → Doc ANSIColor → Doc ANSIColor
 background = annotate ∘ bg
 
-renderColor : Doc ANSICode → String
+renderColor : Doc ANSIColor → String
 renderColor = renderDecorated (esc ∘ code) (esc ∘ reset)
+
+ColorDoc = Doc ANSIColor
