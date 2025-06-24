@@ -42,7 +42,7 @@ private variable
   l : Level
   A B : Set l
 
-infixl 6 _<>_ _<+>_
+infixl 6 _<>_ _<+>_ _</>_
 infixl 5 _$$_ _$+$_
 
 data TextDetails : Set where
@@ -413,6 +413,9 @@ cat = sepX false
 
 hang : Doc ann → ℕ → Doc ann → Doc ann
 hang d1 n d2 = sep (d1 ∷ nest n d2 ∷ [])
+
+_</>_ : ∀ {ann} → Doc ann → Doc ann → Doc ann
+p </> q = hang p 2 q
 
 ---------------------------------------------------------------------------
 -- Filling
