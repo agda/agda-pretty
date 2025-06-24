@@ -5,7 +5,8 @@ module Text.PrettyPrint.ANSI where
 open import Data.Bool
 open import Data.Nat
 open import Data.String hiding (parens)
-open import Text.PrettyPrint.Annotated public
+import Text.PrettyPrint.Annotated as Ann
+open Ann hiding (Doc; Pretty) public
 open import Text.Printf
 open import Function
 
@@ -17,6 +18,11 @@ data Color : Set where
 data ANSIColor : Set where
   fg : Color → ANSIColor
   bg : Color → ANSIColor
+
+Doc = Ann.Doc ANSIColor
+
+Pretty : ∀ {l} → Set l → Set l
+Pretty = Ann.Pretty ANSIColor
 
 private
   colorCode : ℕ → Color → String
@@ -52,13 +58,11 @@ private
   esc : String → String
   esc = printf "\ESC[%sm"
 
-foreground : Color → Doc ANSIColor → Doc ANSIColor
+foreground : Color → Doc → Doc
 foreground = annotate ∘ fg
 
-background : Color → Doc ANSIColor → Doc ANSIColor
+background : Color → Doc → Doc
 background = annotate ∘ bg
 
-renderColor : Doc ANSIColor → String
+renderColor : Doc → String
 renderColor = renderDecorated (esc ∘ code) (esc ∘ reset)
-
-ColorDoc = Doc ANSIColor
