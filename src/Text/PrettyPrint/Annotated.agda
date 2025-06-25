@@ -761,6 +761,9 @@ private
   appPrec = + 10
 
 instance
+  PrettyDoc : Pretty ann (Doc ann)
+  PrettyDoc .pPrintPrec _ _ = id
+
   PrettyNat : Pretty ann ℕ
   PrettyNat .pPrintPrec _ _ = nat
 
